@@ -36,8 +36,6 @@ class DexMethodCountTask extends DefaultTask {
      */
     private static final int MAX_DEX_REFS = 0xFFFF;
 
-    def PackageTree tree;
-
     def BaseVariantOutput apkOrDex
 
     @Nullable
@@ -54,18 +52,28 @@ class DexMethodCountTask extends DefaultTask {
 
     def DexMethodCountExtension config
 
-    def long startTime
-    def long ioTime
-    def long treegenTime
-    def long outputTime
-
     @TaskAction
     void countMethods() {
-        generatePackageTree(["com.android"])
-        printSummary()
-        printFullTree()
-        printChart()
-        printTaskDiagnosticData()
+        def startTime = System.currentTimeMillis()
+
+        def excludedPackages = config.excludedPackages
+        def dexData = extractDexData()
+        def ioTime = System.currentTimeMillis()
+
+        def tree = generatePackageTree(dexData)
+        def excludedTree = excludedPackages.size() > 0 ?
+                generatePackageTree(dexData, excludedPackages) : null
+        def treegenTime = System.currentTimeMillis()
+
+        printSummary(tree)
+        if (excludedTree != null) {
+            printSummary(excludedTree, excludedPackages)
+        }
+        printFullTree(tree)
+        printChart(tree)
+        def outputTime = System.currentTimeMillis()
+
+        printTaskDiagnosticData(tree, startTime, ioTime, treegenTime, outputTime)
     }
 
     static def percentUsed(int count) {
@@ -75,9 +83,8 @@ class DexMethodCountTask extends DefaultTask {
 
     /**
      * Prints a summary of method and field counts
-     * @return
      */
-    def printSummary() {
+    def printSummary(PackageTree tree, List<String> excludedPackages = []) {
         def filename = apkOrDex.outputFile.name
         withStyledOutput(StyledTextOutput.Style.Info) { out ->
             def percentMethodsUsed = percentUsed(tree.methodCount)
@@ -85,6 +92,11 @@ class DexMethodCountTask extends DefaultTask {
 
             def methodsRemaining = Math.max(MAX_DEX_REFS - tree.methodCount, 0)
             def fieldsRemaining = Math.max(MAX_DEX_REFS - tree.fieldCount, 0)
+
+            out.println("")
+            if (excludedPackages.size() > 0) {
+                out.println("Excluding packages: ${excludedPackages}")
+            }
 
             out.println("Total methods in ${filename}: ${tree.methodCount} ($percentMethodsUsed% used)")
             out.println("Total fields in ${filename}:  ${tree.fieldCount} ($percentFieldsUsed% used)")
@@ -125,17 +137,16 @@ class DexMethodCountTask extends DefaultTask {
     /**
      * Prints the package tree to the usual outputs/dexcount/variant.txt file.
      */
-    def printFullTree() {
+    def printFullTree(PackageTree tree) {
         printToFile(outputFile) { PrintStream out ->
             print(tree, out)
         }
-        outputTime = System.currentTimeMillis()
     }
 
     /**
      * Prints the package tree as chart to the outputs/dexcount/${variant}Chart directory.
      */
-    def printChart() {
+    def printChart(PackageTree tree) {
         def printOptions = getPrintOptions()
         printOptions.includeClasses = true
         printToFile(new File(chartDir, "data.js")) { PrintStream out ->
@@ -154,20 +165,20 @@ class DexMethodCountTask extends DefaultTask {
      * Logs the package tree to stdout at {@code LogLevel.DEBUG}, or at the
      * default level if verbose-mode is configured.
      */
-    def printTaskDiagnosticData() {
+    def printTaskDiagnosticData(PackageTree tree, long startTime, long ioTime, long treegenTime,
+                                long outputTime) {
         // Log the entire package list/tree at LogLevel.DEBUG, unless
         // verbose is enabled (in which case use the default log level).
         def level = config.verbose ? null : LogLevel.DEBUG
 
         withStyledOutput(StyledTextOutput.Style.Info, level) { out ->
             print(tree, out)
-
-            out.format("\n\nTask runtimes:\n")
-            out.format("--------------\n")
-            out.format("parsing:    ${ioTime - startTime} ms\n")
-            out.format("counting:   ${treegenTime - ioTime} ms\n")
-            out.format("printing:   ${outputTime - treegenTime} ms\n")
-            out.format("total:      ${outputTime - startTime} ms\n")
+            out.println("\n\nTask runtimes:")
+            out.println("--------------")
+            out.println("parsing:    ${ioTime - startTime} ms")
+            out.println("counting:   ${treegenTime - ioTime} ms")
+            out.println("printing:   ${outputTime - treegenTime} ms")
+            out.println("total:      ${outputTime - startTime} ms")
         }
     }
 
@@ -200,39 +211,36 @@ class DexMethodCountTask extends DefaultTask {
         }
     }
 
+    private List<DexFile> extractDexData() {
+        return DexFile.extractDexData(apkOrDex.outputFile, config.dxTimeoutSec)
+    }
+
     /**
      * Creates a new PackageTree and populates it with the method and field
      * counts of the current dex/apk file.
      */
-    private def generatePackageTree(List<String> excludedPackages = Collections.emptyList()) {
-        startTime = System.currentTimeMillis()
-
+    private PackageTree generatePackageTree(List<DexFile> dataList, List<String> excludedPackages = []) {
         // Create a de-obfuscator based on the current Proguard mapping file.
         // If none is given, we'll get a default mapping.
         def deobs = getDeobfuscator()
-
-        def dataList = DexFile.extractDexData(apkOrDex.outputFile, config.dxTimeoutSec)
-
-        ioTime = System.currentTimeMillis()
+        def result = new PackageTree()
         try {
-            tree = new PackageTree()
-
             refListToClassNames(dataList*.getMethodRefs(), deobs).each {
                 if (!excludedPackages.any { pkg -> it.startsWith(pkg) }) {
-                    tree.addMethodRef(it)
+                    result.addMethodRef(it)
                 }
             }
 
             refListToClassNames(dataList*.getFieldRefs(), deobs).each {
                 if (!excludedPackages.any { pkg -> it.startsWith(pkg) }) {
-                    tree.addFieldRef(it)
+                    result.addFieldRef(it)
                 }
             }
         } finally {
             dataList*.dispose()
         }
 
-        treegenTime = System.currentTimeMillis()
+        return result
     }
 
     static refListToClassNames(List<List<HasDeclaringClass>> refs, Deobfuscator deobfuscator) {

@@ -29,7 +29,7 @@ class DexMethodCountExtension {
     private boolean verbose
     private int maxTreeDepth = Integer.MAX_VALUE
     private int dxTimeoutSec = 60;
-    private List<String> excludedPackages = new ArrayList<>();
+    List<String> excludedPackages = [];
 
     /**
      * When true, includes individual classes in task output.
@@ -134,11 +134,7 @@ class DexMethodCountExtension {
         }
     }
 
-    void setExcludedPackages(List<String> packages) {
-        excludedPackages = packages
-    }
-
-    List<String> getExcludedPackage() {
+    public List<String> getExcludedPackages() {
         return excludedPackages
     }
 }

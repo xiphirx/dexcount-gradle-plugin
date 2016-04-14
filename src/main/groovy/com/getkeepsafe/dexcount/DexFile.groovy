@@ -91,7 +91,7 @@ class DexFile {
         if (dirs.length == 0) {
             throw new Exception("No Build Tools found in " + buildToolsSubDirs.absolutePath)
         }
-        def dxExe = new File(dirs[0], "dx")
+        def dxExe = new File(dirs[0], "dx.bat")
         if (!dxExe.exists()) {
             throw new Exception("dx tool not found at " + dxExe.absolutePath)
         }
