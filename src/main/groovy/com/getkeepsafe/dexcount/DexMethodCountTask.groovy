@@ -61,7 +61,7 @@ class DexMethodCountTask extends DefaultTask {
 
     @TaskAction
     void countMethods() {
-        generatePackageTree()
+        generatePackageTree(["com.android"])
         printSummary()
         printFullTree()
         printChart()
@@ -200,11 +200,11 @@ class DexMethodCountTask extends DefaultTask {
         }
     }
 
-/**
- * Creates a new PackageTree and populates it with the method and field
- * counts of the current dex/apk file.
- */
-    private def generatePackageTree() {
+    /**
+     * Creates a new PackageTree and populates it with the method and field
+     * counts of the current dex/apk file.
+     */
+    private def generatePackageTree(List<String> excludedPackages = Collections.emptyList()) {
         startTime = System.currentTimeMillis()
 
         // Create a de-obfuscator based on the current Proguard mapping file.
@@ -218,11 +218,15 @@ class DexMethodCountTask extends DefaultTask {
             tree = new PackageTree()
 
             refListToClassNames(dataList*.getMethodRefs(), deobs).each {
-                tree.addMethodRef(it)
+                if (!excludedPackages.any { pkg -> it.startsWith(pkg) }) {
+                    tree.addMethodRef(it)
+                }
             }
 
             refListToClassNames(dataList*.getFieldRefs(), deobs).each {
-                tree.addFieldRef(it)
+                if (!excludedPackages.any { pkg -> it.startsWith(pkg) }) {
+                    tree.addFieldRef(it)
+                }
             }
         } finally {
             dataList*.dispose()

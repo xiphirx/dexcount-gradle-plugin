@@ -29,6 +29,7 @@ class DexMethodCountExtension {
     private boolean verbose
     private int maxTreeDepth = Integer.MAX_VALUE
     private int dxTimeoutSec = 60;
+    private List<String> excludedPackages = new ArrayList<>();
 
     /**
      * When true, includes individual classes in task output.
@@ -131,5 +132,13 @@ class DexMethodCountExtension {
                 throw new IllegalArgumentException("Unrecognized output format '$format'")
             }
         }
+    }
+
+    void setExcludedPackages(List<String> packages) {
+        excludedPackages = packages
+    }
+
+    List<String> getExcludedPackage() {
+        return excludedPackages
     }
 }
